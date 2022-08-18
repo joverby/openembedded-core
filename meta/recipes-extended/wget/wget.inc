@@ -18,7 +18,7 @@ EXTRA_OEMAKE += 'TOOLCHAIN_OPTIONS="${TOOLCHAIN_OPTIONS}" \
                  DEBUG_PREFIX_MAP="${DEBUG_PREFIX_MAP}"'
 
 ALTERNATIVE_${PN} = "wget"
-ALTERNATIVE_${PN}_class-nativesdk = ""
+ALTERNATIVE_${PN}:class-nativesdk = ""
 ALTERNATIVE_PRIORITY = "100"
 
 RRECOMMENDS_${PN} += "ca-certificates"

@@ -8,14 +8,14 @@ Add a dependency to avoid the race.
 Upstream-Status: Pending
 Signed-off-by: Richard Purdie <richard.purdie@linuxfoundation.org>
 
-Index: Python-3.8.11/Makefile.pre.in
+Index: Python-3.9.6/Makefile.pre.in
 ===================================================================
---- Python-3.8.11.orig/Makefile.pre.in
-+++ Python-3.8.11/Makefile.pre.in
-@@ -1415,7 +1415,7 @@ LIBSUBDIRS=	tkinter tkinter/test tkinter
- 		unittest unittest/test unittest/test/testmock \
+--- Python-3.9.6.orig/Makefile.pre.in
++++ Python-3.9.6/Makefile.pre.in
+@@ -1486,7 +1486,7 @@ LIBSUBDIRS=	tkinter tkinter/test tkinter
  		venv venv/scripts venv/scripts/common venv/scripts/posix \
- 		curses pydoc_data
+ 		curses pydoc_data \
+ 		zoneinfo
 -libinstall:	build_all $(srcdir)/Modules/xxmodule.c
 +libinstall:	build_all $(srcdir)/Modules/xxmodule.c libainstall
  	@for i in $(SCRIPTDIR) $(LIBDEST); \

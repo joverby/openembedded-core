@@ -62,8 +62,8 @@ RRECOMMENDS_${BPN}-localedatas =  "${@" ".join([p for p in d.getVar('PACKAGES').
 DESCRIPTION_localedef = "glibc: compile locale definition files"
 
 # glibc-gconv is dynamically added into PACKAGES, thus
-# FILES_glibc-gconv will not be automatically extended in multilib.
-# Explicitly add ${MLPREFIX} for FILES_glibc-gconv.
+# FILES:glibc-gconv will not be automatically extended in multilib.
+# Explicitly add ${MLPREFIX} for FILES:glibc-gconv.
 FILES_${MLPREFIX}glibc-gconv = "${libdir}/gconv/*"
 FILES_localedef = "${bindir}/localedef"
 

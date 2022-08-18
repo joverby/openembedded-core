@@ -1,6 +1,6 @@
 INHIBIT_SYSROOT_STRIP = "1"
 
-PACKAGES = "${PN}-dbg catchsegv sln nscd ldconfig ldd tzcode glibc-thread-db ${PN}-pic libcidn libmemusage libnss-db libsegfault ${PN}-pcprofile libsotruss ${PN} ${PN}-utils glibc-extra-nss ${PN}-dev ${PN}-staticdev ${PN}-doc"
+PACKAGES = "${PN}-dbg sln nscd ldconfig ldd ldso tzcode glibc-thread-db ${PN}-pic libmemusage malloc-debug libnss-db ${PN}-pcprofile libsotruss ${PN} ${PN}-utils glibc-extra-nss ${PN}-dev ${PN}-staticdev ${PN}-doc ${PN}-src"
 
 # The ld.so in this glibc supports the GNU_HASH
 RPROVIDES_${PN} = "eglibc rtld(GNU_HASH)"
@@ -22,14 +22,16 @@ ARCH_DYNAMIC_LOADER = ""
 ARCH_DYNAMIC_LOADER_aarch64 = "ld-linux-${TARGET_ARCH}.so.1"
 libc_baselibs_append = " ${@oe.utils.conditional('ARCH_DYNAMIC_LOADER', '', '', '${root_prefix}/lib/${ARCH_DYNAMIC_LOADER}', d)}"
 INSANE_SKIP_${PN}_append_aarch64 = " libdir"
+INSANE_SKIP_${PN}-dev += "staticdev"
+INSANE_SKIP_${MLPREFIX}ldso_append = " dev-so libdir"
 
-FILES_${PN} = "${libc_baselibs} ${libexecdir}/*"
-RRECOMMENDS_${PN} = "${@bb.utils.filter('DISTRO_FEATURES', 'ldconfig', d)}"
-FILES_ldconfig = "${base_sbindir}/ldconfig ${sysconfdir}/ld.so.conf"
+FILES_${PN} = "${libc_baselibs} ${libexecdir}/* ${sysconfdir}/ld.so.conf"
+RRECOMMENDS_${PN} = "${@bb.utils.contains('DISTRO_FEATURES', 'ldconfig', '${MLPREFIX}ldconfig', '', d)}"
+FILES_ldconfig = "${base_sbindir}/ldconfig"
 FILES_ldd = "${bindir}/ldd"
-FILES_libsegfault = "${base_libdir}/libSegFault*"
-FILES_libcidn = "${base_libdir}/libcidn-*.so ${base_libdir}/libcidn.so.*"
+FILES_ldso = "${bindir}/${MLPREFIX}ld.so"
 FILES_libmemusage = "${base_libdir}/libmemusage.so"
+FILES_malloc-debug = "${base_libdir}/libc_malloc_debug.so.0"
 FILES_libnss-db = "${base_libdir}/libnss_db.so.* ${base_libdir}/libnss_db-*.so ${localstatedir}/db/Makefile ${localstatedir}/db/makedbs.sh"
 RDEPENDS_libnss-db = "${PN}-utils"
 FILES_glibc-extra-nss = "${base_libdir}/libnss_*-*.so ${base_libdir}/libnss_*.so.*"
@@ -37,16 +39,14 @@ FILES_sln = "${base_sbindir}/sln"
 FILES_${PN}-pic = "${libdir}/*_pic.a ${libdir}/*_pic.map ${libdir}/libc_pic/*.o"
 FILES_libsotruss = "${libdir}/audit/sotruss-lib.so"
 FILES_SOLIBSDEV = "${libdir}/lib*${SOLIBSDEV}"
-FILES_${PN}-dev += "${libdir}/*_nonshared.a ${base_libdir}/*_nonshared.a ${base_libdir}/*.o ${datadir}/aclocal"
+FILES_${PN}-dev += "${libdir}/libpthread.a ${libdir}/libdl.a ${libdir}/libutil.a ${libdir}/libanl.a ${libdir}/*_nonshared.a ${base_libdir}/*_nonshared.a ${base_libdir}/*.o ${datadir}/aclocal"
 RDEPENDS_${PN}-dev = "linux-libc-headers-dev"
 FILES_${PN}-staticdev += "${libdir}/*.a ${base_libdir}/*.a"
-FILES_nscd = "${sbindir}/nscd* ${sysconfdir}/init.d/nscd ${systemd_unitdir}/system/nscd* ${sysconfdir}/tmpfiles.d/nscd.conf \
+FILES_nscd = "${sbindir}/nscd* ${sysconfdir}/init.d/nscd ${systemd_system_unitdir}/nscd* ${sysconfdir}/tmpfiles.d/nscd.conf \
               ${sysconfdir}/nscd.conf ${sysconfdir}/default/volatiles/98_nscd ${localstatedir}/db/nscd"
 FILES_${PN}-mtrace = "${bindir}/mtrace"
-FILES_tzcode = "${bindir}/tzselect ${sbindir}/zic ${sbindir}/zdump"
+FILES_tzcode = "${bindir}/tzselect ${sbindir}/zic ${bindir}/zdump"
 FILES_${PN}-utils = "${bindir}/* ${sbindir}/*"
-FILES_catchsegv = "${bindir}/catchsegv"
-RDEPENDS_catchsegv = "libsegfault"
 FILES_${PN}-pcprofile = "${base_libdir}/libpcprofile.so"
 FILES_glibc-thread-db = "${base_libdir}/libthread_db.so.* ${base_libdir}/libthread_db-*.so"
 RPROVIDES_${PN}-dev += "libc-dev"
@@ -105,8 +105,8 @@ do_install() {
 	sed -i "s%daemon%start-stop-daemon --start --exec%g" ${D}${sysconfdir}/init.d/nscd
 	sed -i "s|\(enable-cache\t\+netgroup\t\+\)yes|\1no|" ${D}${sysconfdir}/nscd.conf
 
-	install -d ${D}${systemd_unitdir}/system
-	install -m 0644 ${S}/nscd/nscd.service ${D}${systemd_unitdir}/system/
+	install -d ${D}${systemd_system_unitdir}
+	install -m 0644 ${S}/nscd/nscd.service ${D}${systemd_system_unitdir}/
 
 	# The dynamic loader will have been installed into
 	# ${base_libdir}. However, if that isn't going to end up being
@@ -118,6 +118,11 @@ do_install() {
 		ln -s ${@oe.path.relative('${root_prefix}/lib', '${base_libdir}')}/${ARCH_DYNAMIC_LOADER} \
 				${D}${root_prefix}/lib/${ARCH_DYNAMIC_LOADER}
 	fi
+        ln -rs ${D}${base_libdir}/libpthread.so.0 ${D}${libdir}/libpthread.so
+        ln -rs ${D}${base_libdir}/librt.so.1 ${D}${libdir}/librt.so
+        if [ -n "${MLPREFIX}" ]; then
+                mv ${D}${bindir}/ld.so ${D}${bindir}/${MLPREFIX}ld.so
+        fi
 }
 
 def get_libc_fpu_setting(bb, d):
@@ -152,10 +157,12 @@ do_install_append_armeb () {
 }
 
 do_install_armmultilib () {
-	oe_multilib_header bits/endian.h bits/fcntl.h bits/fenv.h bits/fp-fast.h bits/hwcap.h bits/ipc.h bits/link.h bits/wordsize.h
+	oe_multilib_header bits/endian.h bits/fcntl.h bits/fenv.h bits/fp-fast.h bits/hwcap.h bits/ipc.h bits/link.h
 	oe_multilib_header bits/local_lim.h bits/mman.h bits/msq.h bits/pthreadtypes.h bits/pthreadtypes-arch.h  bits/sem.h  bits/semaphore.h bits/setjmp.h
 	oe_multilib_header bits/shm.h bits/sigstack.h bits/stat.h bits/statfs.h bits/typesizes.h
 	oe_multilib_header bits/procfs-id.h bits/procfs.h bits/shmlba.h
+	oe_multilib_header bits/struct_stat.h bits/pthread_stack_min.h
+	oe_multilib_header bits/dl_find_object.h bits/rseq.h bits/timesize.h
 
 	oe_multilib_header fpu_control.h gnu/lib-names.h gnu/stubs.h ieee754.h
 
@@ -257,17 +264,17 @@ python populate_packages_prepend () {
         bpn = d.getVar('BPN')
         prefix = d.getVar('MLPREFIX') or ""
         # Set the base package...
-        d.setVar('PKG_' + prefix + bpn, prefix + 'libc6')
+        d.setVar('PKG:' + prefix + bpn, prefix + 'libc6')
         libcprefix = prefix + bpn + '-'
         for p in pkgs:
             # And all the subpackages.
             if p.startswith(libcprefix):
                 renamed = p.replace(bpn, 'libc6', 1)
-                d.setVar('PKG_' + p, renamed)
+                d.setVar('PKG:' + p, renamed)
         # For backward compatibility with old -dbg package
-        d.appendVar('RPROVIDES_' + libcprefix + 'dbg', ' ' + prefix + 'libc-dbg')
-        d.appendVar('RCONFLICTS_' + libcprefix + 'dbg', ' ' + prefix + 'libc-dbg')
-        d.appendVar('RREPLACES_' + libcprefix + 'dbg', ' ' + prefix + 'libc-dbg')
+        d.appendVar('RPROVIDES:' + libcprefix + 'dbg', ' ' + prefix + 'libc-dbg')
+        d.appendVar('RCONFLICTS:' + libcprefix + 'dbg', ' ' + prefix + 'libc-dbg')
+        d.appendVar('RREPLACES:' + libcprefix + 'dbg', ' ' + prefix + 'libc-dbg')
 }
 
 pkg_postinst_nscd () {

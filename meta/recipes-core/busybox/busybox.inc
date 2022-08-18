@@ -24,7 +24,7 @@ EXTRA_OEMAKE = "CC='${CC}' LD='${CCLD}' V=1 ARCH=${TARGET_ARCH} CROSS_COMPILE=${
 PACKAGES =+ "${PN}-httpd ${PN}-udhcpd ${PN}-udhcpc ${PN}-syslog ${PN}-mdev ${PN}-hwclock"
 
 FILES_${PN}-httpd = "${sysconfdir}/init.d/busybox-httpd /srv/www"
-FILES_${PN}-syslog = "${sysconfdir}/init.d/syslog* ${sysconfdir}/syslog-startup.conf* ${sysconfdir}/syslog.conf* ${systemd_unitdir}/system/syslog.service ${sysconfdir}/default/busybox-syslog"
+FILES_${PN}-syslog = "${sysconfdir}/init.d/syslog* ${sysconfdir}/syslog-startup.conf* ${sysconfdir}/syslog.conf* ${systemd_system_unitdir}/syslog.service ${sysconfdir}/default/busybox-syslog"
 FILES_${PN}-mdev = "${sysconfdir}/init.d/mdev ${sysconfdir}/mdev.conf ${sysconfdir}/mdev/*"
 FILES_${PN}-udhcpd = "${sysconfdir}/init.d/busybox-udhcpd"
 FILES_${PN}-udhcpc = "${sysconfdir}/udhcpc.d ${datadir}/udhcpc"
@@ -97,12 +97,12 @@ DO_IPv6 := "${@bb.utils.contains('DISTRO_FEATURES', 'ipv6', 1, 0, d)}"
 
 python () {
   if "${OE_DEL}":
-    d.setVar('configmangle_append', "${OE_DEL}" + "\n")
+    d.setVar('configmangle:append', "${OE_DEL}" + "\n")
   if "${OE_FEATURES}":
-    d.setVar('configmangle_append',
+    d.setVar('configmangle:append',
                    "/^### DISTRO FEATURES$/a\\\n%s\n\n" %
                    ("\\n".join((d.expand("${OE_FEATURES}").split("\n")))))
-  d.setVar('configmangle_append',
+  d.setVar('configmangle:append',
                  "/^### CROSS$/a\\\n%s\n" %
                   ("\\n".join(["CONFIG_EXTRA_CFLAGS=\"${CFLAGS} ${HOST_CC_ARCH}\""
                         ])
@@ -309,24 +309,25 @@ do_install () {
 			install -m 0755 ${WORKDIR}/mdev-mount.sh ${D}${sysconfdir}/mdev
 		fi
 	fi
-	if grep -q "CONFIG_INIT=y" ${B}/.config; then
+	if grep -q "CONFIG_INIT=y" ${B}/.config && ${@bb.utils.contains('VIRTUAL-RUNTIME_init_manager','busybox','true','false',d)}; then
 		install -D -m 0755 ${WORKDIR}/rcS ${D}${sysconfdir}/init.d/rcS
 		install -D -m 0755 ${WORKDIR}/rcK ${D}${sysconfdir}/init.d/rcK
+		install -D -m 0755 ${WORKDIR}/rcS.default ${D}${sysconfdir}/default/rcS
 	fi
 
 	if ${@bb.utils.contains('DISTRO_FEATURES','systemd','true','false',d)}; then
 		if grep -q "CONFIG_KLOGD=y" ${B}/.config; then
-			install -d ${D}${systemd_unitdir}/system
+			install -d ${D}${systemd_system_unitdir}
 			sed 's,@base_sbindir@,${base_sbindir},g' < ${WORKDIR}/busybox-klogd.service.in \
-			> ${D}${systemd_unitdir}/system/busybox-klogd.service
+			> ${D}${systemd_system_unitdir}/busybox-klogd.service
 		fi
 
 		if grep -q "CONFIG_SYSLOGD=y" ${B}/.config; then
-			install -d ${D}${systemd_unitdir}/system
+			install -d ${D}${systemd_system_unitdir}
 			sed 's,@base_sbindir@,${base_sbindir},g' < ${WORKDIR}/busybox-syslog.service.in \
-			> ${D}${systemd_unitdir}/system/busybox-syslog.service
-			if  [ ! -e ${D}${systemd_unitdir}/system/busybox-klogd.service ] ; then
-				sed -i '/klog/d' ${D}${systemd_unitdir}/system/busybox-syslog.service
+			> ${D}${systemd_system_unitdir}/busybox-syslog.service
+			if  [ ! -e ${D}${systemd_system_unitdir}/busybox-klogd.service ] ; then
+				sed -i '/klog/d' ${D}${systemd_system_unitdir}/busybox-syslog.service
 			fi
 			if [ -f ${WORKDIR}/busybox-syslog.default ] ; then
 				install -d ${D}${sysconfdir}/default
@@ -348,7 +349,7 @@ do_install_ptest () {
         # These access the internet which is not guaranteed to work on machines running the tests
         rm -rf ${D}${PTEST_PATH}/testsuite/wget
 	sort ${B}/.config > ${D}${PTEST_PATH}/.config
-	ln -s ${base_bindir}/busybox   ${D}${PTEST_PATH}/busybox
+	ln -s /bin/busybox   ${D}${PTEST_PATH}/busybox
 }
 
 inherit update-alternatives
@@ -372,9 +373,9 @@ python do_package_prepend () {
             if alt_name == '[':
                 alt_name = 'lbracket'
             if alt_name == 'klogd' or alt_name == 'syslogd':
-                d.appendVar('ALTERNATIVE_%s-syslog' % (pn), ' ' + alt_name)
+                d.appendVar('ALTERNATIVE:%s-syslog' % (pn), ' ' + alt_name)
             else:
-                d.appendVar('ALTERNATIVE_%s' % (pn), ' ' + alt_name)
+                d.appendVar('ALTERNATIVE:%s' % (pn), ' ' + alt_name)
             d.setVarFlag('ALTERNATIVE_LINK_NAME', alt_name, alt_link_name)
             if os.path.exists('%s%s' % (dvar, target)):
                 d.setVarFlag('ALTERNATIVE_TARGET', alt_name, target)
@@ -421,7 +422,7 @@ if grep -q "^${base_bindir}/bash$" $D${sysconfdir}/busybox.links*; then
 fi
 
 """
-    d.prependVar('pkg_postinst_%s' % pkg, postinst)
+    d.prependVar('pkg_postinst:%s' % pkg, postinst)
 }
 
 pkg_postinst_${PN}_prepend () {
